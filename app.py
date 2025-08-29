@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from openai import OpenAI
+from flask_cors import CORS   # 👈 nuevo
 import os
 from dotenv import load_dotenv
 
@@ -7,6 +8,18 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = Flask(__name__)
+
+# 👇 Ajusta los orígenes a los que realmente usarás:
+# - En local (Vite): http://localhost:5173
+# - En producción (tu dominio de Render del frontend): https://tu-frontend.onrender.com
+CORS(app, resources={
+    r"/chat": {
+        "origins": [
+            "http://localhost:5173",
+            "https://tu-frontend.onrender.com"
+        ]
+    }
+})
 
 system_prompt = """Eres un asistente jurídico informativo para Perú.
 - Explica en español claro.
@@ -24,9 +37,12 @@ Salida:
 - Importante: indica el número de artículo o código de donde sale la respuesta según la Constitución y, luego, añade tu conocimiento adicional.
 """
 
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST', 'OPTIONS'])  # 👈 OPTIONS para preflight
 def chat():
-    data = request.json
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    data = request.json or {}
     user_msg = data.get('message', '')
 
     response = client.chat.completions.create(
@@ -40,4 +56,5 @@ def chat():
     return jsonify({"respuesta": response.choices[0].message.content})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # En Render se usa gunicorn, pero para local está bien:
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
