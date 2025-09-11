@@ -16,7 +16,7 @@ CORS(app, resources={
     r"/chat": {
         "origins": [
             "http://localhost:5173",
-            "https://tu-frontend.onrender.com"
+            "https://proy2-chatbot-legal-frontend.onrender.com/"
         ]
     }
 })
