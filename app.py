@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from openai import OpenAI
-from flask_cors import CORS   # 👈 nuevo
+from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 
@@ -9,16 +9,20 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = Flask(__name__)
 
-# 👇 Ajusta los orígenes a los que realmente usarás:
-# - En local (Vite): http://localhost:5173
-# - En producción (tu dominio de Render del frontend): https://tu-frontend.onrender.com
+# CORS: deja /chat y añade /api/chat (sin la barra final en los origins)
 CORS(app, resources={
     r"/chat": {
         "origins": [
             "http://localhost:5173",
             "https://proy2-chatbot-legal-frontend.onrender.com"
         ]
-    }
+    },
+    r"/api/chat": {   # 👇 nuevo
+        "origins": [
+            "http://localhost:5173",
+            "https://proy2-chatbot-legal-frontend.onrender.com"
+        ]
+    }   
 })
 
 system_prompt = """Eres un asistente jurídico informativo para Perú.
@@ -37,24 +41,41 @@ Salida:
 - Importante: indica el número de artículo o código de donde sale la respuesta según la Constitución y, luego, añade tu conocimiento adicional.
 """
 
-@app.route('/chat', methods=['POST', 'OPTIONS'])  # 👈 OPTIONS para preflight
-def chat():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
+# 👇 helper reutilizable para /chat y /api/chat
+def handle_chat():
     data = request.json or {}
     user_msg = data.get('message', '')
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_msg}
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg}
+            ]
+        )
+        return jsonify({"respuesta": response.choices[0].message.content})
+    except Exception as e:
+        print("OpenAI error:", e)  # log útil
+        return jsonify({"error": "openai_error", "detail": str(e)}), 500
 
-    return jsonify({"respuesta": response.choices[0].message.content})
+# (opcional) ping para probar conectividad rápida
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"ok": True})
+
+@app.route('/chat', methods=['POST', 'OPTIONS'])
+def chat():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    return handle_chat()         # 👈 usa el helper
+
+# 👇 alias para que el front que llama /api/chat funcione igual
+@app.route('/api/chat', methods=['POST', 'OPTIONS'])
+def chat_api():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    return handle_chat()         # 👈 usa el mismo helper
 
 if __name__ == "__main__":
-    # En Render se usa gunicorn, pero para local está bien:
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
